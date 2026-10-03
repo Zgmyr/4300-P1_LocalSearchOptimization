@@ -2,8 +2,8 @@
 # 10.02.2026
 #
 # Built using Python v3.12 (IDE: VSCode)
-# Required Packages: networkx, matplotlib
-# run as needed: python -m pip install networkx matplotlib
+# Required Packages: networkx, matplotlib, random
+# run as needed: python -m pip install networkx matplotlib random
 #
 # CMP SCI 4300 - Intro to AI
 # Main driver for project 1: Local search & optimization for a graph coloring problem
@@ -14,11 +14,17 @@
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import random
 
+#//////////////////////#
+# HELPER FUNCTIONS
+#\\\\\\\\\\\\\\\\\\\\\\#
 
 # build_graph:
-# initializes and returns a NetworkX graph with connected edges modeled
-# from Fig 1.1, as shown in the Introduction section of the lab report.
+# initializes a NetworkX graph with connected edges modeled after Fig 1.1, as shown
+# in the Introduction section of the lab report. Also produces a random assignment of
+# colors for each node in the graph, as a dictionary.
+# returns both the NetworkX graph and the dictionary of color assignments.
 def build_graph():
     # construct a NetworkX undirected graph with nodes A-Z
     G = nx.Graph()
@@ -36,13 +42,19 @@ def build_graph():
         ("U","X")
     ])
 
-    return G
+    # generate random colors for each node
+    available_colors = ("red","green","blue")
+    color_dictionary = {}
+    for node in G.nodes:
+         color_dictionary[node] = random.choice(available_colors)
+
+    return G, color_dictionary
 
 # draw_graph:
 # takes a NetworkX graph and a dictionary of color assignments for each labeled
 # node A-Z, and assigns positions for each node according to Fig 1.1.
 # draws the graph in a separate window.
-def draw_graph(nxgraph, colors):
+def draw_graph(nxgraph, color_dictionary):
 
     # hardcoded/fixed positions for all 26 nodes, modeled from Fig 1.1
     positions = {
@@ -54,59 +66,48 @@ def draw_graph(nxgraph, colors):
         "Z": (0, 2)
     }
 
-    # NetworkX expects the colors in the same order as the graph's nodes
-    node_colors = [colors[node] for node in nxgraph.nodes]
+    # build list of colors from dictionary, mapped to each node in NetworkX graph
+    node_colors = [color_dictionary[node] for node in nxgraph.nodes]
 
     nx.draw(
         nxgraph,
         pos=positions,
         with_labels=True,
+        font_color="white",
         node_color=node_colors
     )
 
     plt.show()
 
 
+#//////////////////////#
+# MAIN DRIVER
+#\\\\\\\\\\\\\\\\\\\\\\#
 
-# DRIVER - testing graph building and node conflicts
+def main():
 
-graph = build_graph()
+    # create NetworkX graph with random color assignments
+    nxgraph, color_assignments = build_graph()
 
-# testing color assignment for generated graph
-colors = {
-    "A": "green",
-    "B": "green",
-    "C": "green",
-    "D": "green",
-    "E": "green",
-    "F": "green",
-    "G": "green",
-    "H": "green",
-    "I": "green",
-    "J": "green",
-    "K": "green",
-    "L": "green",
-    "M": "green",
-    "N": "green",
-    "O": "green",
-    "P": "green",
-    "Q": "green",
-    "R": "green",
-    "S": "green",
-    "T": "green",
-    "U": "green",
-    "V": "green",
-    "W": "green",
-    "X": "green",
-    "Y": "green",
-    "Z": "green"
-}
+    # print color assignments to terminal
+    for node in color_assignments:
+         print(f"{node} = {color_assignments[node]}")
 
-draw_graph(graph, colors)
+    # Check for conflict and print each one
+    i = 1
+    for u, v in nxgraph.edges:
+        if (color_assignments[u] == color_assignments[v]):
+            print(f"[{i}] conflict {color_assignments[u].upper()}: {u} <=> {v}")
+            i+=1
+    
+    # print graph
+    draw_graph(nxgraph, color_assignments)
 
-i = 1
-# Check for conflict and print each one
-for u, v in graph.edges:
-    if (colors[u] == colors[v]):
-        print(f"[{i}] CONFLICT: {u}={colors[u]} <=> {v}={colors[v]}")
-        i+=1
+    return
+
+
+
+
+# main guard: run main() function as driver
+if __name__ == "__main__":
+    main()
