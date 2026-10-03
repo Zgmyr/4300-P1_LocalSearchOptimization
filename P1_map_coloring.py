@@ -1,16 +1,21 @@
 # Zachary Gmyr
 # 10.02.2026
-#
-# Built using Python v3.12 (IDE: VSCode)
-# Required Packages: networkx, matplotlib, random
-# run as needed: python -m pip install networkx matplotlib random
-#
 # CMP SCI 4300 - Intro to AI
 # Main driver for project 1: Local search & optimization for a graph coloring problem
 #
+# Built using Python v3.12 (IDE: VSCode)
+# Required Packages: networkx, matplotlib
+# run as needed: python -m pip install networkx matplotlib
+#
+# Description:
 # This project uses a hand drawn graph (Fig 1.1) shown in the Introduction section of my lab report.
 # In this driver the graph is created then drawn to a new window, and each color conflict is printed
 # to the terminal.
+#
+# Generative AI disclosure:
+# ChatGPT was used as a learning/debugging aid for Python syntax, NetworkX/Matplotlib visualization,
+# code organization & troubleshooting. Any AI-assisted suggestions integrated into my code were
+# reviewed and modified by me before inclusion.
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -21,10 +26,10 @@ import random
 #\\\\\\\\\\\\\\\\\\\\\\#
 
 # build_graph:
-# initializes a NetworkX graph with connected edges modeled after Fig 1.1, as shown
+# Initializes a NetworkX graph with connected edges modeled after Fig 1.1, as shown
 # in the Introduction section of the lab report. Also produces a random assignment of
 # colors for each node in the graph, as a dictionary.
-# returns both the NetworkX graph and the dictionary of color assignments.
+# Returns both the NetworkX graph and the dictionary of color assignments.
 def build_graph():
     # construct a NetworkX undirected graph with nodes A-Z
     G = nx.Graph()
@@ -51,10 +56,10 @@ def build_graph():
     return G, color_dictionary
 
 # draw_graph:
-# takes a NetworkX graph and a dictionary of color assignments for each labeled
+# Takes a NetworkX graph and a dictionary of color assignments for each labeled
 # node A-Z, and assigns positions for each node according to Fig 1.1.
-# draws the graph in a separate window.
-def draw_graph(nxgraph, color_dictionary):
+# Draws the graph in a separate window.
+def draw_graph(nxgraph, color_assignments, graph_title=""):
 
     # hardcoded/fixed positions for all 26 nodes, modeled from Fig 1.1
     positions = {
@@ -66,16 +71,60 @@ def draw_graph(nxgraph, color_dictionary):
         "Z": (0, 2)
     }
 
-    # build list of colors from dictionary, mapped to each node in NetworkX graph
-    node_colors = [color_dictionary[node] for node in nxgraph.nodes]
+    # display colors used for red/blue/green (better contrast for red-green accessibility)
+    display_color_map = {
+        "red": "#D55E00",
+        "green": "#009E73",
+        "blue": "#0072B2"
+    }
 
+    # convert logical color assignments to display colors in NetworkX node order
+    node_colors = [
+        display_color_map[color_assignments[node]]
+        for node in nxgraph.nodes
+    ]
+
+    # create Matplotlib figure & axes for the NetworkX graph
+    fig, ax = plt.subplots(figsize=(8,5))
+
+    # draw NetworkX graph onto axis
     nx.draw(
         nxgraph,
         pos=positions,
         with_labels=True,
         font_color="white",
-        node_color=node_colors
+        font_size=10,
+        font_weight="bold",
+        node_color=node_colors,
+        node_size=500,
+        edgecolors="white",
+        edge_color="white",
+        width=2,
+        ax=ax
     )
+
+    # customize graph title & appearance
+    ax.set_title(
+        graph_title,
+        fontsize=16,
+        color="white",
+        fontweight="bold",
+        pad=22
+    )
+
+    # subtitle
+    ax.text(
+        0.5, 1.02,
+        "26 Nodes (A-Z), 43 Edges",
+        transform=ax.transAxes,
+        ha="center",
+        va="bottom",
+        color="#d0d0d0",
+        fontsize=10
+    )
+
+    ax.set_facecolor("#1f1f1f")
+    fig.set_facecolor("#1f1f1f")
 
     plt.show()
 
@@ -101,7 +150,7 @@ def main():
             i+=1
     
     # print graph
-    draw_graph(nxgraph, color_assignments)
+    draw_graph(nxgraph, color_assignments,"Randomized Initial State")
 
     return
 
