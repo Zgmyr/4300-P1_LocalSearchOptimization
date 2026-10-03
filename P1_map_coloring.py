@@ -59,7 +59,7 @@ def build_graph():
 # Takes a NetworkX graph and a dictionary of color assignments for each labeled
 # node A-Z, and assigns positions for each node according to Fig 1.1.
 # Draws the graph in a separate window.
-def draw_graph(nxgraph, color_assignments, graph_title=""):
+def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
 
     # hardcoded/fixed positions for all 26 nodes, modeled from Fig 1.1
     positions = {
@@ -80,7 +80,7 @@ def draw_graph(nxgraph, color_assignments, graph_title=""):
 
     # convert logical color assignments to display colors in NetworkX node order
     node_colors = [
-        display_color_map[color_assignments[node]]
+        display_color_map[color_assignment[node]]
         for node in nxgraph.nodes
     ]
 
@@ -112,7 +112,7 @@ def draw_graph(nxgraph, color_assignments, graph_title=""):
         pad=22
     )
 
-    # subtitle
+    # display subtitle describing graph structure
     ax.text(
         0.5, 1.02,
         "26 Nodes (A-Z), 43 Edges",
@@ -123,11 +123,117 @@ def draw_graph(nxgraph, color_assignments, graph_title=""):
         fontsize=10
     )
 
+    # display objective function value at bottom of graph
+    ax.text(
+        0.5, -0.05,
+        f"f(state): {objective_val} conflicting edges",
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        color="white",
+        fontsize=14,
+        fontweight="bold"
+    )
+
     ax.set_facecolor("#1f1f1f")
     fig.set_facecolor("#1f1f1f")
 
     plt.show()
 
+# get_objective_value
+# Given a NetworkX graph & color assignments dictionary for each node A-Z,
+# counts number of coloring conflicts between endpoint nodes for each and every edge
+# Returns the number of edge conflicts counted
+def get_objective_value(nxgraph, color_assignments):
+    edge_conflicts = 0
+
+    # count the number of conflicting edges for same-color assignment
+    for endpt1, endpt2 in nxgraph.edges:
+        if (color_assignments[endpt1] == color_assignments[endpt2]):
+            edge_conflicts += 1
+
+    return edge_conflicts
+
+def find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
+
+    # best assignment (node, color) + objective function value among neighboring states
+    steepest_assignment = None
+    steepest_objval = cur_objval
+    
+    allowed_colors = {"red", "blue", "green"}
+    
+    # consider each and every possible node recoloring (neighboring states)
+    for node in nxgraph.nodes:
+
+        # determine what other colors the node may be assigned
+        choice_colors = allowed_colors.difference({color_assignments[node]})
+        
+        # get nodes adjacent to this node
+        neighboring_nodes = tuple(nxgraph.neighbors(node))
+
+        # count current edge conflicts incident to this node
+        old_node_edge_conflicts = 0
+        for neighbor_node in neighboring_nodes:
+            if color_assignments[node] == color_assignments[neighbor_node]:
+                old_node_edge_conflicts += 1
+
+        # consider each other color assignment for this node
+        for new_color in choice_colors:
+
+            # count incident edge conflicts if this node is assigned the candidate color
+            new_node_edge_conflicts = 0
+            for neighbor_node in neighboring_nodes:
+                if new_color == color_assignments[neighbor_node]:
+                    new_node_edge_conflicts += 1
+
+            # compute objective value of the candidate neighboring state
+            delta_node_conflicts = old_node_edge_conflicts - new_node_edge_conflicts
+            candidate_objval = cur_objval - delta_node_conflicts
+
+            # store best-so-far objective function value
+            if candidate_objval < steepest_objval:
+                steepest_assignment = (node, new_color)
+                steepest_objval = candidate_objval
+                
+                # stop early if a goal state with 0 conflicting edges is found
+                if steepest_objval == 0:
+                    return steepest_assignment, steepest_objval
+
+    # return steepest improving neighboring assignment + objective value
+    return steepest_assignment, steepest_objval
+
+def steepest_hill_climbing(nxgraph, init_color_assignments, init_objval):
+    # create a copy of initial state {node:color} assignments
+    current_assignments = init_color_assignments.copy()
+    current_objval = init_objval
+
+    # transition to neighboring states until no further improvement in objective value
+    is_still_climbing = True
+    
+    while is_still_climbing:
+        # find the steepest improving neighboring assignment, if one exists (node:color assignment, new objective value)
+        neighbor_node_assignment, current_objval = find_steepest_neighbor(nxgraph, current_assignments, current_objval)
+
+        # check if better neighboring state was found
+        if neighbor_node_assignment is not None:
+
+            # apply move to neighboring state
+            reassigned_node, reassigned_color = neighbor_node_assignment
+            current_assignments[reassigned_node] = reassigned_color
+
+            # stop if goal state (0 edge conflicts) is reached
+            if current_objval == 0:
+                is_still_climbing = False
+        else:
+            # stop if no strictly improving neighboring state can be found
+            is_still_climbing = False
+
+    # return final color assignments + objective value after hill climbing terminates
+    return current_assignments, current_objval
+
+    
+
+            
 
 #//////////////////////#
 # MAIN DRIVER
@@ -138,19 +244,20 @@ def main():
     # create NetworkX graph with random color assignments
     nxgraph, color_assignments = build_graph()
 
-    # print color assignments to terminal
-    for node in color_assignments:
-         print(f"{node} = {color_assignments[node]}")
-
-    # Check for conflict and print each one
-    i = 1
-    for u, v in nxgraph.edges:
-        if (color_assignments[u] == color_assignments[v]):
-            print(f"[{i}] conflict {color_assignments[u].upper()}: {u} <=> {v}")
-            i+=1
+    # get initial objective function value
+    init_objval = get_objective_value(nxgraph, color_assignments)
+    print(f"f(initial)={init_objval}")
     
-    # print graph
-    draw_graph(nxgraph, color_assignments,"Randomized Initial State")
+    # draw the initial randomized state
+    draw_graph(nxgraph, color_assignments, init_objval,"Randomized Initial State")
+
+    # run steepest hill climbing
+    steep_hill_assignments, steep_objval = steepest_hill_climbing(nxgraph, color_assignments, init_objval)
+    print(f"f(hill)={steep_objval}")
+    print(f"DEBUG f(hill)={get_objective_value(nxgraph,steep_hill_assignments)}")
+
+    # draw the steepest hill climbing result
+    draw_graph(nxgraph, steep_hill_assignments, steep_objval, "Steepest Hill Climbing Result")
 
     return
 
