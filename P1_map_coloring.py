@@ -88,23 +88,20 @@ def build_graph():
 
     return G, color_dictionary
 
-# draw_graph:
-# Displays a single graph-coloring state in a separate Matplotlib window.
-# Uses the globally defined GRAPH_POSITIONS and DISPLAY_COLOR_MAP values
-# to draw the fixed graph layout and accessible display colors.
-# Displays the provided graph title, graph metadata, and objective-function value
-def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
+# _draw_graph_state:
+# Internal helper used by draw_graph() to render one graph-coloring state
+# onto a supplied Matplotlib axis. Uses the globally defined GRAPH_POSITIONS
+# and DISPLAY_COLOR_MAP values and displays the graph title, structure,
+# and objective-function value.
+def _draw_graph_state(ax, nxgraph, color_assignments, objective_val, graph_title):
 
     # convert logical color assignments to display colors in NetworkX node order
     node_colors = [
-        DISPLAY_COLOR_MAP[color_assignment[node]]
+        DISPLAY_COLOR_MAP[color_assignments[node]]
         for node in nxgraph.nodes
     ]
 
-    # create Matplotlib figure & axes for the NetworkX graph
-    fig, ax = plt.subplots(figsize=(8,5))
-
-    # draw NetworkX graph onto axis, using positions defined globally
+    # draw NetworkX graph onto supplied axis
     nx.draw(
         nxgraph,
         pos=GRAPH_POSITIONS,
@@ -120,7 +117,7 @@ def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
         ax=ax
     )
 
-    # customize graph title & appearance
+    # display graph title
     ax.set_title(
         graph_title,
         fontsize=16,
@@ -129,7 +126,7 @@ def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
         pad=22
     )
 
-    # display subtitle describing graph structure
+    # display graph structure below title
     ax.text(
         0.5, 1.02,
         "26 Nodes (A-Z), 43 Edges",
@@ -140,10 +137,10 @@ def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
         fontsize=10
     )
 
-    # display objective function value at bottom of graph
+    # display objective-function value below graph
     ax.text(
         0.5, -0.05,
-        f"f(state): {objective_val} conflicting edges",
+        f"f(state) = {objective_val} conflicting edges",
         transform=ax.transAxes,
         ha="center",
         va="top",
@@ -152,108 +149,71 @@ def draw_graph(nxgraph, color_assignment, objective_val, graph_title=""):
         fontweight="bold"
     )
 
+    # set graph background
     ax.set_facecolor("#1f1f1f")
-    fig.set_facecolor("#1f1f1f")
 
-    plt.show()
 
-# draw_graph_comparison
-# Displays a randomized initial coloring and an algorithm-result coloring
-# side-by-side in the same Matplotlib window for direct comparison.
-# Uses the globally defined GRAPH_POSITIONS and DISPLAY_COLOR_MAP values.
-# Accepts the algorithm's resulting metadata dictionary to obtain the initial
-# and final objective-function values and support display of search statistics.
-# Displays a configurable title for the algorithm result.
-def draw_graph_comparison(nxgraph, initial_assignments,
-                          result_assignments, metadata, result_title):
-    
-    # convert logical color assignments to display colors in NetworkX node order
-    initial_node_colors = [
-        DISPLAY_COLOR_MAP[initial_assignments[node]]
-        for node in nxgraph.nodes
-    ]
+# draw_graph:
+# Displays either a single graph-coloring state or a side-by-side comparison
+# between an initial state and an algorithm-result state.
+# If result_assignments is not supplied, draws only the initial state using
+# the provided objective value and graph title.
+# If result_assignments is supplied, metadata provides the initial/final
+# objective values and runtime for the comparison display.
+def draw_graph(nxgraph, initial_assignments, objective_val=None,
+               result_assignments=None, metadata=None, graph_title=""):
 
-    result_node_colors = [
-        DISPLAY_COLOR_MAP[result_assignments[node]]
-        for node in nxgraph.nodes
-    ]
+    # single-state display
+    if result_assignments is None:
 
-    # create side-by-side Matplotlib axes
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        fig, ax = plt.subplots(figsize=(8, 5))
 
-    # draw randomized initial state
-    nx.draw(
-        nxgraph,
-        pos=GRAPH_POSITIONS,
-        with_labels=True,
-        font_color="white",
-        font_size=10,
-        font_weight="bold",
-        node_color=initial_node_colors,
-        node_size=500,
-        edgecolors="white",
-        edge_color="white",
-        width=2,
-        ax=axes[0]
-    )
-
-    # draw algorithm result
-    nx.draw(
-        nxgraph,
-        pos=GRAPH_POSITIONS,
-        with_labels=True,
-        font_color="white",
-        font_size=10,
-        font_weight="bold",
-        node_color=result_node_colors,
-        node_size=500,
-        edgecolors="white",
-        edge_color="white",
-        width=2,
-        ax=axes[1]
-    )
-
-    # data used to customize each side of the comparison
-    graph_data = [
-        (axes[0], "Randomized Initial State", metadata["init_objval"]),
-        (axes[1], result_title, metadata["final_objval"])
-    ]
-
-    # apply titles, graph information, objective values, and appearance
-    for ax, graph_title, objective_val in graph_data:
-
-        ax.set_title(
-            graph_title,
-            fontsize=16,
-            color="white",
-            fontweight="bold",
-            pad=22
+        _draw_graph_state(
+            ax,
+            nxgraph,
+            initial_assignments,
+            objective_val,
+            graph_title
         )
 
-        # display graph structure below title
-        ax.text(
-            0.5, 1.02,
-            "26 Nodes (A-Z), 43 Edges",
-            transform=ax.transAxes,
-            ha="center",
-            va="bottom",
-            color="#d0d0d0",
-            fontsize=10
+        fig.set_facecolor("#1f1f1f")
+
+        # provide room for title and objective-value label
+        fig.subplots_adjust(
+            bottom=0.14,
+            top=0.88
         )
 
-        # display objective function value below graph
-        ax.text(
-            0.5, -0.05,
-            f"f(state) = {objective_val} conflicting edges",
-            transform=ax.transAxes,
-            ha="center",
-            va="top",
-            color="white",
-            fontsize=14,
-            fontweight="bold"
+    # initial vs. algorithm-result comparison
+    else:
+
+        # comparison requires search metadata
+        if metadata is None:
+            raise ValueError(
+                "metadata must be provided when drawing a result comparison"
+            )
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+        # draw randomized initial state
+        _draw_graph_state(
+            axes[0],
+            nxgraph,
+            initial_assignments,
+            metadata["init_objval"],
+            "Randomized Initial State"
         )
 
-        # display runtime below the result objective value
+        # draw algorithm result
+        _draw_graph_state(
+            axes[1],
+            nxgraph,
+            result_assignments,
+            metadata["final_objval"],
+            graph_title
+        )
+
+        # display algorithm runtime below result objective value
         axes[1].text(
             0.5, -0.11,
             f"Runtime: {metadata['runtime'] * 1000:.3f} ms",
@@ -264,20 +224,16 @@ def draw_graph_comparison(nxgraph, initial_assignments,
             fontsize=10
         )
 
-        ax.set_facecolor("#1f1f1f")
+        fig.set_facecolor("#1f1f1f")
 
-    # customize overall figure appearance
-    fig.set_facecolor("#1f1f1f")
-
-    # provide room for titles and objective-value labels
-    fig.subplots_adjust(
-        bottom=0.14,
-        top=0.88,
-        wspace=0.12
-    )
+        # provide room for titles, objective values, and runtime
+        fig.subplots_adjust(
+            bottom=0.18,
+            top=0.88,
+            wspace=0.12
+        )
 
     plt.show()
-
 
 
 
@@ -300,7 +256,11 @@ def get_objective_value(nxgraph, color_assignments):
 
     return edge_conflicts
 
-# find_steepest_neighbor
+
+
+
+
+# _find_steepest_neighbor
 # Examines every possible one-node recoloring from the current state and
 # returns the strictly improving neighboring move with the lowest objective value.
 # Candidate objective values are calculated locally using the change in conflicts
@@ -309,7 +269,7 @@ def get_objective_value(nxgraph, color_assignments):
 # Returns (node, new_color), the resulting objective value, and the number of
 # candidate states evaluated. If no strictly improving neighbor exists, returns
 # None, the current objective value, and the number of candidates evaluated.
-def find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
+def _find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
 
     # best assignment (node, color) + objective function value among neighboring states
     steepest_assignment = None
@@ -370,7 +330,7 @@ def find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
 # steepest_hill_climbing
 # Performs steepest hill climbing from the provided randomized initial state.
 # A copy of the initial color assignments is repeatedly updated by applying
-# the best strictly improving move returned by find_steepest_neighbor().
+# the best strictly improving move returned by _find_steepest_neighbor().
 # Search terminates when a goal state with 0 conflicts is reached or when
 # no strictly improving neighboring state exists.
 # Collects metadata including initial/final objective values, number of state
@@ -406,7 +366,7 @@ def steepest_hill_climbing(nxgraph, init_color_assignments, init_objval):
     
     while is_still_climbing:
         # find the steepest improving neighboring assignment, if one exists
-        neighbor_node_assignment, current_objval, candidates_evaluated = find_steepest_neighbor(
+        neighbor_node_assignment, current_objval, candidates_evaluated = _find_steepest_neighbor(
             nxgraph,
             current_assignments,
             current_objval)
@@ -455,17 +415,26 @@ def main():
     print(f"f(initial)={init_objval}")
     
     # draw the initial randomized state
-    draw_graph(nxgraph, init_assignments, init_objval,"Randomized Initial State")
+    draw_graph(nxgraph,
+               init_assignments,
+               init_objval,
+               graph_title="Randomized Initial State")
 
     # run steepest hill climbing
-    shc_assignments, shc_metadata = steepest_hill_climbing(nxgraph, init_assignments, init_objval)
+    shc_assignments, shc_metadata = steepest_hill_climbing(nxgraph,
+                                                           init_assignments,
+                                                           init_objval)
+    
     print(f"f(hill)={shc_metadata["final_objval"]}")
     print(f"Hill climbing runtime: {shc_metadata["runtime"] * 1000:.3f} ms")
+    print(f"Hill climbing # moves: {shc_metadata["transitions"]}")
 
     # draw the steepest hill climbing result as comparison
-    draw_graph_comparison(nxgraph, init_assignments,
-                          shc_assignments, shc_metadata,
-                          "Steepest Hill Climbing Result")
+    draw_graph(nxgraph,
+               init_assignments,
+               result_assignments=shc_assignments,
+               metadata=shc_metadata,
+               graph_title="Steepest Hill Climbing Result")
 
     return
 
