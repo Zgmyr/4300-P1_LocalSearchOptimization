@@ -256,20 +256,47 @@ def get_objective_value(nxgraph, color_assignments):
 
     return edge_conflicts
 
+# _evaluate_recolor
+# Evaluates one neighboring graph-coloring state produced by recoloring a
+# single candidate node. Only edges incident to the candidate node are checked,
+# because all other graph conflicts remain unchanged by the recoloring.
+# Computes the change in incident edge conflicts and applies that delta to the
+# current objective-function value rather than recounting all graph edges.
+# Returns the resulting objective-function value for the candidate neighboring state.
+def _evaluate_recolor(nxgraph, current_assignments, cur_objval, candidate_node, candidate_color):
 
+    old_node_edge_conflicts = 0
+    new_node_edge_conflicts = 0
 
+    # check the nodes incident to candidate node
+    for neighbor_node in nxgraph.neighbors(candidate_node):
+
+        # count edge conflicts for candidate node with current color assignment
+        if current_assignments[candidate_node] == current_assignments[neighbor_node]:
+            old_node_edge_conflicts += 1
+        
+        # count edge conflicts if candidate node is assigned the candidate color
+        if candidate_color == current_assignments[neighbor_node]:
+            new_node_edge_conflicts += 1
+
+    # compute objective value of neighboring state with candidate node recoloring
+    delta_recolor_conflicts = old_node_edge_conflicts - new_node_edge_conflicts
+    neighbor_objval = cur_objval - delta_recolor_conflicts
+
+    return neighbor_objval
+    
 
 
 # _find_steepest_neighbor
 # Examines every possible one-node recoloring from the current state and
 # returns the strictly improving neighboring move with the lowest objective value.
-# Candidate objective values are calculated locally using the change in conflicts
-# on edges incident to the recolored node rather than recounting all graph edges.
+# Each candidate recoloring is evaluated by _evaluate_recolor(), which computes
+# its objective value locally using only edges incident to the recolored node.
 # Also counts how many candidate neighboring states are evaluated during the search.
 # Returns (node, new_color), the resulting objective value, and the number of
 # candidate states evaluated. If no strictly improving neighbor exists, returns
 # None, the current objective value, and the number of candidates evaluated.
-def _find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
+def _find_steepest_neighbor(nxgraph, current_assignments, cur_objval):
 
     # best assignment (node, color) + objective function value among neighboring states
     steepest_assignment = None
@@ -283,34 +310,16 @@ def _find_steepest_neighbor(nxgraph, color_assignments, cur_objval):
     # consider each and every possible node recoloring (neighboring states)
     for node in nxgraph.nodes:
 
-        # get nodes adjacent to this node
-        neighboring_nodes = tuple(nxgraph.neighbors(node))
-
-        # count current edge conflicts incident to this node
-        old_node_edge_conflicts = 0
-        for neighbor_node in neighboring_nodes:
-            if color_assignments[node] == color_assignments[neighbor_node]:
-                old_node_edge_conflicts += 1
-
         # determine what other colors the node may be assigned
-        choice_colors = []
-        for new_color in allowed_colors:
-            if new_color == color_assignments[node]:
-                continue
-            choice_colors.append(new_color)
+        choice_colors = [color for color in allowed_colors
+                         if color != current_assignments[node]]
 
         # consider each other color assignment for this node
         for new_color in choice_colors:
 
-            # count incident edge conflicts if this node is assigned the candidate color
-            new_node_edge_conflicts = 0
-            for neighbor_node in neighboring_nodes:
-                if new_color == color_assignments[neighbor_node]:
-                    new_node_edge_conflicts += 1
-
-            # compute objective value of the candidate neighboring state
-            delta_node_conflicts = old_node_edge_conflicts - new_node_edge_conflicts
-            candidate_objval = cur_objval - delta_node_conflicts
+            # compute objective value for candidate node recoloring
+            candidate_objval = _evaluate_recolor(nxgraph, current_assignments,
+                                                 cur_objval, node, new_color)
 
             # increment candidate states considered
             candidates_considered += 1
@@ -366,19 +375,20 @@ def steepest_hill_climbing(nxgraph, init_color_assignments, init_objval):
     
     while is_still_climbing:
         # find the steepest improving neighboring assignment, if one exists
-        neighbor_node_assignment, current_objval, candidates_evaluated = _find_steepest_neighbor(
+        neighbor_assignment, current_objval, candidates_evaluated = _find_steepest_neighbor(
             nxgraph,
             current_assignments,
-            current_objval)
+            current_objval
+        )
 
         # update metadata with candidates considered
         metadata["candidate_states_evaluated"] += candidates_evaluated
 
         # check if better neighboring state was found
-        if neighbor_node_assignment is not None:
+        if neighbor_assignment is not None:
 
             # apply move to neighboring state
-            reassigned_node, reassigned_color = neighbor_node_assignment
+            reassigned_node, reassigned_color = neighbor_assignment
             current_assignments[reassigned_node] = reassigned_color
 
             # increment transition in metadata after applying move
@@ -415,26 +425,19 @@ def main():
     print(f"f(initial)={init_objval}")
     
     # draw the initial randomized state
-    draw_graph(nxgraph,
-               init_assignments,
-               init_objval,
+    draw_graph(nxgraph, init_assignments, init_objval,
                graph_title="Randomized Initial State")
 
     # run steepest hill climbing
-    shc_assignments, shc_metadata = steepest_hill_climbing(nxgraph,
-                                                           init_assignments,
-                                                           init_objval)
+    shc_assignments, shc_metadata = steepest_hill_climbing(nxgraph, init_assignments, init_objval)
     
     print(f"f(hill)={shc_metadata["final_objval"]}")
     print(f"Hill climbing runtime: {shc_metadata["runtime"] * 1000:.3f} ms")
     print(f"Hill climbing # moves: {shc_metadata["transitions"]}")
 
     # draw the steepest hill climbing result as comparison
-    draw_graph(nxgraph,
-               init_assignments,
-               result_assignments=shc_assignments,
-               metadata=shc_metadata,
-               graph_title="Steepest Hill Climbing Result")
+    draw_graph(nxgraph, init_assignments, result_assignments=shc_assignments,
+               metadata=shc_metadata, graph_title="Steepest Hill Climbing Result")
 
     return
 
