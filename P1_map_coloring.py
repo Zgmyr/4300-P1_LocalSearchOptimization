@@ -20,6 +20,7 @@
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import math
 import random
 import time
 
@@ -509,11 +510,11 @@ def sideways_hill_climbing(nxgraph, init_color_assignments, init_objval, consecu
         "init_objval": init_objval,
         "final_objval": init_objval,
         "transitions": 0,
-        "consecutive_sideways_limit": consecutive_sideways_limit,
-        "sideways_moves": 0,
         "candidate_states_evaluated": 0,
         "goal_reached": False,
-        "runtime": 0.0
+        "runtime": 0.0,
+        "consecutive_sideways_limit": consecutive_sideways_limit,
+        "sideways_moves": 0
     }
 
     # start runtime counter
@@ -591,12 +592,162 @@ def sideways_hill_climbing(nxgraph, init_color_assignments, init_objval, consecu
     # return final state and search metadata
     return current_assignments, metadata
 
+# _cooling_schedule
+# Computes the simulated-annealing temperature for a given iteration using
+# either a linear or geometric cooling schedule. Returns 0 once the scheduled
+# temperature reaches the fixed minimum cutoff of 0.1.
+def _cooling_schedule(iteration, cooling_strategy, init_temp, cooling_rate):
+
+    # initialize temperature and minimum temperature cutoff
+    temperature = 0.0
+    cutoff_temp = 0.1
+
+    # LINEAR cooling schedule: T(t)=T0-(rate * t)
+    if cooling_strategy == "linear":
+        temperature = init_temp - (cooling_rate * iteration)
+
+    # GEOMETRIC cooling schedule: T(t)=T0*(rate)^t
+    elif cooling_strategy == "geometric":
+        temperature = init_temp * (cooling_rate ** iteration)
+
+    # return 0 when the scheduled temperature reaches the cutoff
+    if temperature <= cutoff_temp:
+        temperature = 0
+
+    return temperature
+
+# simulated_annealing
+# Repeatedly samples one random neighboring recoloring and accepts improving
+# or equal moves, while worse moves may be accepted based on temperature.
+# Stops at a goal state or when the cooling schedule terminates, and returns
+# the final assignments with search metadata.
+def simulated_annealing(nxgraph, init_color_assignments, init_objval, cooling_strategy, init_temp, cooling_rate):
+
+    # initialize search metadata
+    metadata = {
+        "init_objval": init_objval,
+        "final_objval": init_objval,
+        "transitions": 0,
+        "candidate_states_evaluated": 0,
+        "goal_reached": False,
+        "runtime": 0.0,
+        "cooling_strategy": cooling_strategy,
+        "initial_temp": init_temp,
+        "cooling_rate": cooling_rate,
+        "worse_moves_considered": 0,
+        "worse_moves_accepted": 0
+    }
+
+    # start runtime counter
+    start_time = time.perf_counter()
+
+    # create a copy of the initial state and objective value
+    current_assignments = init_color_assignments.copy()
+    current_objval = init_objval
+
+    # initialize current temperature to initial temperature
+    current_temp = init_temp
+
+    # return immediately if the initial state is already a goal
+    if init_objval == 0:
+        metadata["goal_reached"] = True
+        metadata["runtime"] = time.perf_counter() - start_time
+        return current_assignments, metadata
+    
+    # continue until a goal is reached or the cooling schedule terminates
+    current_iteration = 0
+
+    while True:
+
+        # compute temperature for the current iteration
+        current_temp = _cooling_schedule(
+            current_iteration,
+            cooling_strategy,
+            init_temp,
+            cooling_rate
+        )
+
+        # stop when the cooling schedule returns 0
+        if current_temp == 0:
+            break
+
+        # randomly choose one candidate neighboring state
+        candidate_node = random.choice(list(nxgraph.nodes))
+        choice_colors = [color for color in ALLOWED_COLORS
+                         if color != current_assignments[candidate_node]]
+        candidate_color = random.choice(choice_colors)
+
+        # compute objective value produced by this random candidate recoloring
+        candidate_objval = _evaluate_recolor(
+            nxgraph,
+            current_assignments,
+            current_objval,
+            candidate_node,
+            candidate_color
+        )
+
+        # accumulate candidate states evaluated
+        metadata["candidate_states_evaluated"] += 1
+
+        # compute objective difference; positive is improving, zero is equal, negative is worse
+        delta_objval = current_objval - candidate_objval
+
+        # determine if the move is accepted
+        is_move_accepted = False
+
+        # always accept strictly improving moves
+        if delta_objval > 0:
+            is_move_accepted = True
+
+        # always accept equal-objective moves
+        elif delta_objval == 0:
+            is_move_accepted = True
+        
+        # consider worse moves using temperature-dependent acceptance probability
+        else:
+            # record worse candidate considered
+            metadata["worse_moves_considered"] += 1
+
+            # compute probability of accepting the worse move
+            probability_accept_move = math.e ** (delta_objval / current_temp)
+
+            if random.random() <= probability_accept_move:
+                # permit worse move and record its acceptance
+                is_move_accepted = True
+                metadata["worse_moves_accepted"] += 1
+
+        # apply the candidate move if accepted
+        if is_move_accepted:
+            
+            # apply the selected recoloring and update objective value
+            current_assignments[candidate_node] = candidate_color
+            current_objval = candidate_objval
+            
+            # record the state transition
+            metadata["transitions"] += 1
+
+            # stop if a goal state is reached
+            if current_objval == 0:
+                metadata["goal_reached"] = True
+                break
+
+        # increment iteration and continue
+        current_iteration += 1
+
+    # record final objective value and runtime
+    metadata["final_objval"] = current_objval
+    metadata["runtime"] = time.perf_counter() - start_time
+
+    # return final state and search metadata
+    return current_assignments, metadata
+
 
 
 
 #////////////////////////////////////////////////////////////////////////////////////////////////////#
-#                            MAIN DRIVER
+#                            MAIN DRIVER + HELPERS
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
+
 
 def debug_display_search_metadata(search_name, metadata):
     print(f"[{search_name}]:")
@@ -608,10 +759,60 @@ def debug_display_search_metadata(search_name, metadata):
             print(f"  {key} = {metadata[key] * 1000:.6f} ms")
 
 
+def get_simulated_annealing_parameters():
+
+    print("""Cooling Schedules:
+ 1. Linear: T(t)=T0-(R * t)
+ 2. Geometric: T(t)=T0*(R^t)
+""")
+
+    # get cooling schedule
+    cooling_sched = int(input("Select cooling schedule (1 or 2): "))
+    while cooling_sched != 1 and cooling_sched != 2:
+        print("Invalid cooling schedule selected")
+        cooling_sched = int(input("Select cooling schedule (1 or 2): "))
+
+    if cooling_sched == 1:
+        cooling_sched = "linear"
+    else:
+        cooling_sched = "geometric"
+
+    # get initial temperature
+    init_temp = float(input("Enter initial temperature (> 0.1): "))
+    while init_temp <= 0.1:
+        print("Invalid initial temperature entered")
+        init_temp = float(input("Enter initial temperature (> 0.1): "))
+
+    # get cooling rate/factor
+    if cooling_sched == "linear":
+        print("NOTE: Smaller values cool more slowly and allow more iterations.")
+        print("      Larger values cool more quickly.")
+        cooling_rate = float(input("Enter cooling rate (R > 0): "))
+
+        while cooling_rate <= 0:
+            print("Invalid cooling rate entered")
+            cooling_rate = float(input("Enter cooling rate (R > 0): "))
+
+    else:
+        print("NOTE: Values closer to 1 cool more slowly and allow more iterations.")
+        print("      Smaller values cool more quickly and reduce acceptance of worse moves sooner.")
+        cooling_rate = float(input("Enter cooling factor (0 < R < 1): "))
+
+        while cooling_rate <= 0 or cooling_rate >= 1:
+            print("Invalid cooling factor entered")
+            cooling_rate = float(input("Enter cooling factor (0 < R < 1): "))
+
+    return cooling_sched, init_temp, cooling_rate
+
 def main():
 
-    # testing steepest and sideways hill climbing
-    results_titles = ["Steepest Hill Climbing Result", "Sideways Hill Climbing Result"]
+    # TESTING SIMULATED ANNEALING
+
+    results_titles = [
+        "Steepest Hill Climbing Result",
+        "Sideways Hill Climbing Result",
+        "Simulated Annealing Result"
+    ]
 
 
     # create NetworkX graph with random color assignments & get initial objective value
@@ -625,8 +826,9 @@ def main():
 Search Algorithms Menu:
 1. Steepest Hill Climbing
 2. Sideways Hill Climbing
-3. Generate new graph
-4. Exit""")
+3. Simulated Annealing
+4. Generate initial state
+5. Exit""")
         search_choice = int(input(f"\nEnter option: "))
 
         if search_choice == 1:
@@ -647,6 +849,7 @@ Search Algorithms Menu:
                 graph_title=results_titles[0]
             )
         elif search_choice == 2:
+            # NOTE TO SELF: turn this prompt into a helper function w/ validation later on
             # run sideways hill climbing, print metadata, and draw results
             sideways_moves = int(input(f"How many consecutive sideways moves?: "))
             print()
@@ -668,10 +871,35 @@ Search Algorithms Menu:
                 graph_title=results_titles[1]
             )
         elif search_choice == 3:
+
+            # get parameters for simulated annealing search
+            cooling_sched, init_temp, cooling_rate = get_simulated_annealing_parameters()
+            
+            # run simulated annealing, print metadata, and draw results
+            sa_assignments, sa_metadata = simulated_annealing(
+                nxgraph,
+                init_assignments,
+                init_objval,
+                cooling_sched,
+                init_temp,
+                cooling_rate
+            )
+
+            debug_display_search_metadata(results_titles[2], sa_metadata)
+
+            draw_graph(
+                nxgraph,
+                init_assignments,
+                result_assignments=sa_assignments,
+                metadata=sa_metadata,
+                graph_title=results_titles[2]
+            )
+
+        elif search_choice == 4:
             # create NetworkX graph with random color assignments & get initial objective value
             nxgraph, init_assignments = build_graph()
             init_objval = get_objective_value(nxgraph, init_assignments)
-        elif search_choice == 4:
+        elif search_choice == 5:
             is_still_debugging = False
         else:
             print("invalid option")
