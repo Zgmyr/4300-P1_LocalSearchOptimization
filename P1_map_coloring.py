@@ -75,6 +75,20 @@ ALLOWED_COLORS = (
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 
+# generate_initial_state
+# Simple helper that generates random color assignments for nodes A-Z,
+# used for representing a new initial state in the color graph.
+def generate_initial_state(nxgraph):
+
+    color_assignments = {}
+
+    # generate random colors for each node
+    for node in nxgraph.nodes:
+         color_assignments[node] = random.choice(ALLOWED_COLORS)
+
+    return color_assignments
+
+
 # build_graph:
 # Initializes and returns the fixed NetworkX graph used for the project.
 # Node labels A-Z are added to the graph, and the hardcoded edge list is
@@ -90,11 +104,9 @@ def build_graph():
     G.add_edges_from(GRAPH_EDGES)
 
     # generate random colors for each node
-    color_dictionary = {}
-    for node in G.nodes:
-         color_dictionary[node] = random.choice(ALLOWED_COLORS)
+    color_assignments = generate_initial_state(G)
 
-    return G, color_dictionary
+    return G, color_assignments
 
 
 # _draw_graph_state:
@@ -822,9 +834,7 @@ def local_beam(nxgraph, init_color_assignments, init_objval, k, beam_limit):
     for beam_index in range(1,k):
 
         # generate a complete random color assignment
-        state_assignments = {}
-        for node in nxgraph.nodes:
-            state_assignments[node] = random.choice(ALLOWED_COLORS)
+        state_assignments = generate_initial_state(nxgraph)
 
         # compute objective value of the randomized state
         state_objval = get_objective_value(nxgraph, state_assignments)
@@ -914,11 +924,11 @@ def local_beam(nxgraph, init_color_assignments, init_objval, k, beam_limit):
 
 
 #////////////////////////////////////////////////////////////////////////////////////////////////////#
-#                            MAIN DRIVER + HELPERS
+#                            MAIN DRIVER + PROMPT HELPERS
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 
-def debug_display_search_metadata(search_name, metadata):
+def display_search_metadata(search_name, metadata):
     print(f"[{search_name}]:")
 
     for key in metadata:
@@ -926,6 +936,16 @@ def debug_display_search_metadata(search_name, metadata):
             print(f"  {key} = {metadata[key]}")
         else:
             print(f"  {key} = {metadata[key] * 1000:.6f} ms")
+
+def get_sideways_parameter():
+    # prompt for number of consecutive sideways moves to use
+    sideways_moves = int(input(f"Enter a limit on the number of consecutive sideways moves (>= 0): "))
+
+    while sideways_moves < 0:
+        print("Invalid choice, must be at least 0.")
+        sideways_moves = int(input(f"Enter a limit on the number of consecutive sideways moves (>= 0): "))
+
+    return sideways_moves
 
 
 def get_simulated_annealing_parameters():
@@ -973,104 +993,168 @@ def get_simulated_annealing_parameters():
 
     return cooling_sched, init_temp, cooling_rate
 
+
+def get_local_beam_parameters():
+    
+    # prompt for number of states k to track at a time
+    beam_size = int(input(f"Enter the beam size (k > 0): "))
+
+    while beam_size <= 0:
+        print("Invalid choice, must be at least 1.")
+        beam_size = int(input(f"Enter the number of states to track at a time (k > 0): "))
+
+    # prompt for number of beam iterations
+    beam_limit = int(input(f"Enter a limit on the number of beam iterations (> 0): "))
+
+    while beam_limit <= 0:
+        print("Invalid choice, must be at least 1.")
+        beam_limit = int(input(f"Enter a limit on the number of beam iterations (> 0): "))
+
+    return beam_size, beam_limit
+
+
 def main():
 
-    # TESTING SIMULATED ANNEALING
-
+    # titles used for displaying metadata & graphs
     results_titles = [
         "Steepest Hill Climbing Result",
         "Sideways Hill Climbing Result",
-        "Simulated Annealing Result"
+        "Simulated Annealing Result",
+        "Local Beam Search Results"
     ]
 
-
     # create NetworkX graph with random color assignments & get initial objective value
-    nxgraph, init_assignments = build_graph()
-    init_objval = get_objective_value(nxgraph, init_assignments)
+    nxgraph, init_state = build_graph()
+    init_objval = get_objective_value(nxgraph, init_state)
 
-    is_still_debugging = True
+    while True:
 
-    while is_still_debugging:
+        # continue to display menu until user selects Exit (6)
         print("""
 Search Algorithms Menu:
 1. Steepest Hill Climbing
 2. Sideways Hill Climbing
 3. Simulated Annealing
-4. Generate initial state
-5. Exit""")
+4. Local Beam Search
+5. Generate new initial state
+6. Exit""")
+
+        # get user choice from menu options
         search_choice = int(input(f"\nEnter option: "))
 
         if search_choice == 1:
-            # run steepest hill climbing, print metadata, and draw results
-            shc_assignments, shc_metadata = steepest_hill_climbing(
+
+            # run steepest hill climbing search using the current initial state
+            shc_state, shc_metadata = steepest_hill_climbing(
                 nxgraph,
-                init_assignments,
+                init_state,
                 init_objval
             )
 
-            debug_display_search_metadata(results_titles[0], shc_metadata)
+            # display search metadata
+            display_search_metadata(results_titles[0], shc_metadata)
 
+            # draw comparison of initial state and steepest hill climbing result
             draw_graph(
                 nxgraph,
-                init_assignments,
-                result_assignments=shc_assignments,
+                init_state,
+                result_assignments=shc_state,
                 metadata=shc_metadata,
                 graph_title=results_titles[0]
             )
-        elif search_choice == 2:
-            # NOTE TO SELF: turn this prompt into a helper function w/ validation later on
-            # run sideways hill climbing, print metadata, and draw results
-            sideways_moves = int(input(f"How many consecutive sideways moves?: "))
-            print()
 
-            swhc_assignments, swhc_metadata = sideways_hill_climbing(
+        elif search_choice == 2:
+
+            # prompt the user for a limit on the number of consecutive sideways moves
+            consecutive_sideways_limit = get_sideways_parameter()
+
+            # run sideways hill climbing search using the current initial state
+            swhc_state, swhc_metadata = sideways_hill_climbing(
                 nxgraph,
-                init_assignments,
+                init_state,
                 init_objval,
-                sideways_moves
+                consecutive_sideways_limit
             )
 
-            debug_display_search_metadata(results_titles[1], swhc_metadata)
+            # display search metadata
+            display_search_metadata(results_titles[1], swhc_metadata)
 
+            # draw comparison of initial state and sideways hill climbing result
             draw_graph(
                 nxgraph,
-                init_assignments,
-                result_assignments=swhc_assignments,
+                init_state,
+                result_assignments=swhc_state,
                 metadata=swhc_metadata,
                 graph_title=results_titles[1]
             )
+
         elif search_choice == 3:
 
             # get parameters for simulated annealing search
             cooling_sched, init_temp, cooling_rate = get_simulated_annealing_parameters()
             
-            # run simulated annealing, print metadata, and draw results
-            sa_assignments, sa_metadata = simulated_annealing(
+            # run simulated annealing search using the current initial state
+            sa_state, sa_metadata = simulated_annealing(
                 nxgraph,
-                init_assignments,
+                init_state,
                 init_objval,
                 cooling_sched,
                 init_temp,
                 cooling_rate
             )
 
-            debug_display_search_metadata(results_titles[2], sa_metadata)
+            # display search metadata
+            display_search_metadata(results_titles[2], sa_metadata)
 
+            # draw comparison of initial state and simulated annealing result
             draw_graph(
                 nxgraph,
-                init_assignments,
-                result_assignments=sa_assignments,
+                init_state,
+                result_assignments=sa_state,
                 metadata=sa_metadata,
                 graph_title=results_titles[2]
             )
 
         elif search_choice == 4:
-            # create NetworkX graph with random color assignments & get initial objective value
-            nxgraph, init_assignments = build_graph()
-            init_objval = get_objective_value(nxgraph, init_assignments)
+
+            # prompt the user for a limit on the number of beam iterations
+            beam_size, beam_limit = get_local_beam_parameters()
+
+            # run local beam search using the current initial state
+            lb_state, lb_metadata = local_beam(
+                nxgraph,
+                init_state,
+                init_objval,
+                beam_size,
+                beam_limit,
+            )
+
+            # display search metadata
+            display_search_metadata(results_titles[3], lb_metadata)
+
+            # draw comparison of the first generated initial state and local beam result
+            draw_graph(
+                nxgraph,
+                init_state,
+                result_assignments=lb_state,
+                metadata=lb_metadata,
+                graph_title=results_titles[3]
+            )
+            
         elif search_choice == 5:
-            is_still_debugging = False
+
+            # generate a new initial state and compute new initial objective value
+            init_state = generate_initial_state(nxgraph)
+            init_objval = get_objective_value(nxgraph, init_state)
+
+        elif search_choice == 6:
+
+            # exit loop and terminate program
+            break
+
         else:
+
+            # re-prompt the user with menu choices
             print("invalid option")
 
     return
