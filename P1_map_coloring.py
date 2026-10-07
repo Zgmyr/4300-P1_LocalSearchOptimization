@@ -75,7 +75,7 @@ ALLOWED_COLORS = (
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 
-# generate_initial_state
+# generate_initial_state:
 # Simple helper that generates random color assignments for nodes A-Z,
 # used for representing a new initial state in the color graph.
 def generate_initial_state(nxgraph):
@@ -264,7 +264,7 @@ def draw_graph(nxgraph, initial_assignments, objective_val=None,
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 
-# get_objective_value
+# get_objective_value:
 # Given a NetworkX graph & a complete color-assignment dictionary (node:color for nodes A-Z),
 # evaluates the state globally by checking every graph edge for same-color endpoints.
 # Returns the total number of conflicting edges as the objective-function value.
@@ -279,7 +279,7 @@ def get_objective_value(nxgraph, color_assignments):
     return edge_conflicts
 
 
-# _evaluate_recolor
+# _evaluate_recolor:
 # Evaluates one candidate node recoloring using the change in conflicts on
 # edges incident to that node rather than recounting all graph edges.
 # Returns the neighboring state's objective value.
@@ -306,7 +306,7 @@ def _evaluate_recolor(nxgraph, current_assignments, cur_objval, candidate_node, 
     return neighbor_objval
 
 
-# _find_steepest_neighbor
+# _find_steepest_neighbor:
 # Evaluates every one-node recoloring and finds the lowest objective value
 # among strictly improving neighbors. Ties at the steepest objective are
 # broken randomly. Returns the selected (node, new_color), resulting objective
@@ -363,7 +363,7 @@ def _find_steepest_neighbor(nxgraph, current_assignments, cur_objval):
         return None, cur_objval, candidates_considered
 
 
-# steepest_hill_climbing
+# steepest_hill_climbing:
 # Repeatedly applies a steepest strictly improving recoloring from the
 # provided initial state, with random tie-breaking among equally steep moves.
 # Stops at a goal state or when no strictly improving neighbor exists.
@@ -434,7 +434,7 @@ def steepest_hill_climbing(nxgraph, init_color_assignments, init_objval):
     return current_assignments, metadata
 
 
-# _find_sideways_neighbor
+# _find_sideways_neighbor:
 # Finds a steepest improving recoloring, randomly breaking ties.
 # If no improvement exists and sideways movement is permitted, randomly
 # selects an equal-objective neighbor. Returns the move, objective value,
@@ -509,7 +509,7 @@ def _find_sideways_neighbor(nxgraph, current_assignments, cur_objval, is_sideway
         return None, cur_objval, candidates_considered
 
 
-# sideways_hill_climbing
+# sideways_hill_climbing:
 # Performs steepest hill climbing while permitting a limited number of
 # consecutive sideways moves. Improving moves reset the sideways allowance.
 # Stops at a goal state or when no permitted move exists, and returns the
@@ -603,7 +603,7 @@ def sideways_hill_climbing(nxgraph, init_color_assignments, init_objval, consecu
     # return final state and search metadata
     return current_assignments, metadata
 
-# _cooling_schedule
+# _cooling_schedule:
 # Computes the simulated-annealing temperature for a given iteration using
 # either a linear or geometric cooling schedule. Returns 0 once the scheduled
 # temperature reaches the fixed minimum cutoff of 0.1.
@@ -627,7 +627,7 @@ def _cooling_schedule(iteration, cooling_strategy, init_temp, cooling_rate):
 
     return temperature
 
-# simulated_annealing
+# simulated_annealing:
 # Repeatedly samples one random neighboring recoloring and accepts improving
 # or equal moves, while worse moves may be accepted based on temperature.
 # Stops at a goal state or when the cooling schedule terminates, and returns
@@ -928,6 +928,8 @@ def local_beam(nxgraph, init_color_assignments, init_objval, k, beam_limit):
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\#
 
 
+# display_search_metadata:
+# Displays the name and recorded metadata values for a completed search.
 def display_search_metadata(search_name, metadata):
     print(f"[{search_name}]:")
 
@@ -937,6 +939,9 @@ def display_search_metadata(search_name, metadata):
         else:
             print(f"  {key} = {metadata[key] * 1000:.6f} ms")
 
+# get_sideways_parameter:
+# Prompts for and validates the consecutive sideways-move limit.
+# Returns a nonnegative integer limit.
 def get_sideways_parameter():
     # prompt for number of consecutive sideways moves to use
     sideways_moves = int(input(f"Enter a limit on the number of consecutive sideways moves (>= 0): "))
@@ -948,6 +953,9 @@ def get_sideways_parameter():
     return sideways_moves
 
 
+# get_simulated_annealing_parameters:
+# Prompts for and validates the simulated-annealing cooling schedule,
+# initial temperature, and cooling rate/factor.
 def get_simulated_annealing_parameters():
 
     print("""Cooling Schedules:
@@ -994,6 +1002,9 @@ def get_simulated_annealing_parameters():
     return cooling_sched, init_temp, cooling_rate
 
 
+# get_local_beam_parameters:
+# Prompts for and validates the local-beam size and iteration limit.
+# Returns the selected beam size and positive iteration limit.
 def get_local_beam_parameters():
     
     # prompt for number of states k to track at a time
@@ -1013,6 +1024,9 @@ def get_local_beam_parameters():
     return beam_size, beam_limit
 
 
+# main:
+# Runs the interactive program menu, maintains the current initial state,
+# and executes the selected local-search algorithm and result display.
 def main():
 
     # titles used for displaying metadata & graphs
