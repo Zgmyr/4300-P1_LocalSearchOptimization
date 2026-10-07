@@ -741,6 +741,63 @@ def simulated_annealing(nxgraph, init_color_assignments, init_objval, cooling_st
     return current_assignments, metadata
 
 
+# _generate_beam_candidates:
+# Generates and evaluates all one-node recoloring successors across the current beam.
+# Returns the successor descriptions, any goal successor found, and number of candidates evaluated.
+def _generate_beam_candidates(nxgraph, current_beam):
+
+    # initialize successor candidate collection
+    successor_candidates = []
+
+    # count how many neighboring candidate states are evaluated
+    candidates_evaluated = 0
+
+    # track a goal successor if one is encountered
+    goal_candidate = None
+
+    # generate successors from every state in the current beam
+    for beam_state in current_beam:
+
+        # extract this beam state's assignments and objective value
+        state_assignments, state_objval = beam_state
+
+        # examine every possible one-node recoloring
+        for node in nxgraph.nodes:
+
+            # determine the two alternative colors available for this node
+            choice_colors = [color for color in ALLOWED_COLORS
+                             if color != state_assignments[node]]
+
+            # evaluate each possible recoloring of this node
+            for new_color in choice_colors:
+
+                # compute objective value produced by this candidate recoloring
+                candidate_objval = _evaluate_recolor(
+                    nxgraph,
+                    state_assignments,
+                    state_objval,
+                    node,
+                    new_color
+                )
+
+                # increment number of candidate neighboring states evaluated
+                candidates_evaluated += 1
+
+                # return immediately if this candidate produces a goal state
+                if candidate_objval == 0:
+                    goal_candidate = (state_assignments, node, new_color, candidate_objval)
+                    return successor_candidates, goal_candidate, candidates_evaluated
+
+                # store the candidate recoloring for possible next-beam selection
+                successor_candidates.append((state_assignments, node, new_color, candidate_objval))
+
+    # return all generated successors when no goal state is found
+    return successor_candidates, goal_candidate, candidates_evaluated
+
+
+# local_beam:
+# Performs local beam search using k states, selecting the globally best k successors each iteration.
+# Stops at a goal state or the beam iteration limit and returns the best result with search metadata.
 def local_beam(nxgraph, init_color_assignments, init_objval, k, beam_limit):
 
     # initialize search metadata
@@ -758,114 +815,99 @@ def local_beam(nxgraph, init_color_assignments, init_objval, k, beam_limit):
     # start runtime counter
     start_time = time.perf_counter()
 
-    # create a copy of the initial state and objective value
+    # initialize the beam with the provided randomized state
     current_beam = [(init_color_assignments.copy(), init_objval)]
 
-    # build the search beam with k-1 additional randomized initial states
-    for k_index in range(1,k):
+    # generate k-1 additional randomized states to complete the initial beam
+    for beam_index in range(1,k):
 
-        # generate a randomized initial state
-        k_assignments = {}
+        # generate a complete random color assignment
+        state_assignments = {}
         for node in nxgraph.nodes:
-            k_assignments[node] = random.choice(ALLOWED_COLORS)
+            state_assignments[node] = random.choice(ALLOWED_COLORS)
 
-        # compute objective value of this state
-        k_objval = get_objective_value(nxgraph, k_assignments)
+        # compute objective value of the randomized state
+        state_objval = get_objective_value(nxgraph, state_assignments)
 
-        # add the randomized initial assignment and objective value to the beam
-        current_beam.append((k_assignments, k_objval))
+        # add the state and its objective value to the current beam
+        current_beam.append((state_assignments, state_objval))
     
-    # return immediately if any of the initial k states are a goal
-    for k_state in current_beam:
-        k_assignments, k_objval = k_state
-        if k_objval == 0:
+    # return immediately if any initial beam state is already a goal
+    for beam_state in current_beam:
+        state_assignments, state_objval = beam_state
+        if state_objval == 0:
             metadata["goal_reached"] = True
-            metadata["final_objval"] = k_objval
+            metadata["final_objval"] = state_objval
             metadata["runtime"] = time.perf_counter() - start_time
-            return k_assignments, metadata
+            return state_assignments, metadata
 
-    # continue until the goal or the beam iteration limit is reached
+    # initialize beam iteration counter
     current_iteration = 0
-
+    
+    # continue until a goal is found or the beam iteration limit is reached
     while current_iteration < beam_limit:
 
-        # track current candidate neighboring states for the next beam
-        next_beam_candidates = []
-        
-        # evaluate all candidate neighboring states across beam of of k states
-        for k_state in current_beam:
+        # generate all successor candidates from the current beam
+        successor_candidates, goal_candidate, candidates_evaluated = _generate_beam_candidates(
+            nxgraph,
+            current_beam
+        )
 
-            # get the information stored by this state
-            k_assignments, k_objval = k_state
+        # accumulate candidate states evaluated
+        metadata["candidate_states_evaluated"] += candidates_evaluated
 
-            # examine every possible one-node recoloring
-            for node in nxgraph.nodes:
+        # return immediately if a goal successor was found
+        if goal_candidate is not None:
+            parent_assignments, node, new_color, candidate_objval = goal_candidate
 
-                # determine the two alternative colors available for this node
-                choice_colors = [color for color in ALLOWED_COLORS
-                                 if color != k_assignments[node]]
+            # construct the complete goal state from its parent
+            goal_assignments = parent_assignments.copy()
+            goal_assignments[node] = new_color
 
-                # evaluate each possible recoloring of this node
-                for new_color in choice_colors:
+            # record the final transition and successful termination
+            metadata["transitions"] += 1
+            metadata["goal_reached"] = True
+            metadata["final_objval"] = candidate_objval
+            metadata["runtime"] = time.perf_counter() - start_time
 
-                    # compute objective value produced by this candidate recoloring
-                    candidate_objval = _evaluate_recolor(
-                        nxgraph,
-                        k_assignments,
-                        k_objval,
-                        node,
-                        new_color
-                    )
+            return goal_assignments, metadata
 
-                    # accumulate candidate states evaluated
-                    metadata["candidate_states_evaluated"] += 1
-
-                    # stop immediately if a goal state is reached
-                    if candidate_objval == 0:
-                        goal_assignments = k_assignments.copy()
-                        goal_assignments[node] = new_color
-                        metadata["transitions"] += 1
-                        metadata["goal_reached"] = True
-                        metadata["final_objval"] = candidate_objval
-                        metadata["runtime"] = time.perf_counter() - start_time
-                        return goal_assignments, metadata
-
-                    # stash the candidate recoloring description
-                    next_beam_candidates.append(
-                        (k_assignments, node, new_color, candidate_objval)
-                    )
-
-        # find the best k states from list of k candidate states
-        top_k_candidates = sorted(
-            next_beam_candidates,
+        # select the k successor candidates with the lowest objective values
+        best_beam_candidates = sorted(
+            successor_candidates,
             key=lambda candidate: candidate[3]
         )[:k]
 
-        # update current_beam with the top_k_candidates
-        for k_index in range(k):
+        # construct the next beam from the selected successor candidates
+        for beam_index in range(k):
 
-            # extract corresponding top k candidate description
-            k_assignments, node, new_color, candidate_objval = top_k_candidates[k_index]
+            # extract the parent state, recoloring, and resulting objective value
+            parent_assignments, node, new_color, candidate_objval = best_beam_candidates[beam_index]
 
-            # apply the move to this candidate state
-            new_k_assignment = k_assignments.copy()
-            new_k_assignment[node] = new_color
-
+            # construct the selected successor state
+            new_assignments = parent_assignments.copy()
+            new_assignments[node] = new_color
+            
+            # record the state transition
             metadata["transitions"] += 1
 
-            current_beam[k_index] = (new_k_assignment, candidate_objval)
+            # replace this beam slot with the selected successor
+            current_beam[beam_index] = (new_assignments, candidate_objval)
 
-        # increment iteration and continue
+        # increment beam iteration and continue
         current_iteration += 1
 
-    # determine the best state among remaining states in current beam
-    best_k_state = sorted(
+    # select the best remaining state after the beam iteration limit is reached
+    best_assignment, best_objval = min(
         current_beam,
         key=lambda state: state[1]
-    )[:1]
-    best_assignment, best_objval = best_k_state[0]
+    )
+
+    # record final objective value and runtime
     metadata["final_objval"] = best_objval
     metadata["runtime"] = time.perf_counter() - start_time
+
+    # return the best remaining state and search metadata
     return best_assignment, metadata
 
 
